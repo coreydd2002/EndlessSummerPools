@@ -1,0 +1,9 @@
+{
+  "name": "endless-summer-pools",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "formidable": "^2.1.2",
+    "resend": "^4.0.0"
+  }
+}
