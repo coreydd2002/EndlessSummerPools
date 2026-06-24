@@ -58,7 +58,7 @@ module.exports = async function handler(req, res) {
     }));
 
     await resend.emails.send({
-      from:    'onboarding@resend.dev',
+      from:    'request@endlesssummerpools.com',
       to:      'coreydd2002@gmail.com',
       subject: `New ${serviceLabel} — ${firstName} ${lastName}`,
       html,
