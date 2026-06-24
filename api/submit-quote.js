@@ -1,6 +1,4 @@
 const { Resend } = require('resend');
-const formidable = require('formidable');
-const fs = require('fs');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -11,22 +9,26 @@ const SERVICE_LABELS = {
   inspection: 'Inspection Request',
 };
 
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.on('data', chunk => { raw += chunk; });
+    req.on('end', () => {
+      try { resolve(JSON.parse(raw)); }
+      catch (e) { reject(new Error('Invalid JSON')); }
+    });
+    req.on('error', reject);
+  });
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const form = formidable({ maxTotalFileSize: 10 * 1024 * 1024 });
-    const [fields, files] = await form.parse(req);
+    const { firstName, lastName, email, phone, address, serviceType, poolGallons, photos = [] } = await readBody(req);
 
-    const firstName   = fields.firstName?.[0]   ?? '';
-    const lastName    = fields.lastName?.[0]    ?? '';
-    const email       = fields.email?.[0]       ?? '';
-    const phone       = fields.phone?.[0]       ?? '';
-    const address     = fields.address?.[0]     ?? '';
-    const serviceType = fields.serviceType?.[0] ?? '';
-    const poolGallons = fields.poolGallons?.[0] ?? '';
     const serviceLabel = SERVICE_LABELS[serviceType] || serviceType;
 
     const row = (label, value, shaded) =>
@@ -47,25 +49,17 @@ module.exports = async function handler(req, res) {
         ${row('Address',  address)}
         ${serviceType === 'online' ? row('Pool Size', `${poolGallons} gallons`, true) : ''}
       </table>
-      ${serviceType === 'online' ? '<p style="margin-top:18px;font-family:sans-serif;color:#5C5C5E;font-size:0.88rem;">Pool photos are attached.</p>' : ''}
+      ${photos.length ? '<p style="margin-top:18px;font-family:sans-serif;color:#5C5C5E;font-size:0.88rem;">Pool photos are attached.</p>' : ''}
     `;
 
-    // Collect compressed photo attachments (online quotes only)
-    const attachments = [];
-    if (serviceType === 'online') {
-      for (let i = 0; ; i++) {
-        const photo = files[`photo_${i}`]?.[0];
-        if (!photo) break;
-        attachments.push({
-          filename: `pool-photo-${i + 1}.jpg`,
-          content: fs.readFileSync(photo.filepath).toString('base64'),
-        });
-      }
-    }
+    const attachments = photos.map((base64, i) => ({
+      filename: `pool-photo-${i + 1}.jpg`,
+      content:  base64,
+    }));
 
     await resend.emails.send({
-      from: 'onboarding@resend.dev',
-      to: 'coreydd2002@gmail.com',
+      from:    'onboarding@resend.dev',
+      to:      'coreydd2002@gmail.com',
       subject: `New ${serviceLabel} — ${firstName} ${lastName}`,
       html,
       attachments,

@@ -135,6 +135,14 @@ function compressImage(file, maxWidth = 1200, quality = 0.8) {
   });
 }
 
+function blobToBase64(blob) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.readAsDataURL(blob);
+  });
+}
+
 // === FORM SUBMISSION ===
 
 document.getElementById('quoteForm').addEventListener('submit', async e => {
@@ -196,36 +204,40 @@ document.getElementById('quoteForm').addEventListener('submit', async e => {
   if (!valid) return;
 
   const submitBtn = document.querySelector('#quoteForm .btn-submit');
-  let compressedImages = [];
+  let photos = [];
 
   if (isOnline) {
     submitBtn.textContent = 'Compressing photos…';
     submitBtn.disabled = true;
     const files = document.getElementById('q-photos').files;
-    compressedImages = await Promise.all(Array.from(files).map(file => compressImage(file)));
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Submit Request';
+    const blobs = await Promise.all(Array.from(files).map(file => compressImage(file)));
+    photos = await Promise.all(blobs.map(blob => blobToBase64(blob)));
   }
 
-  // Build FormData payload (not sent yet)
-  const payload = new FormData();
-  payload.append('firstName',   f.firstName.value.trim());
-  payload.append('lastName',    f.lastName.value.trim());
-  payload.append('email',       f.email.value.trim());
-  payload.append('phone',       f.phone.value.trim());
-  payload.append('address',     f.address.value.trim());
-  payload.append('serviceType', serviceTypeInput.value);
-  if (isOnline) {
-    payload.append('poolGallons', document.getElementById('q-gallons').value);
-    compressedImages.forEach((blob, i) => payload.append(`photo_${i}`, blob, `photo_${i}.jpg`));
-  }
+  // Build JSON payload
+  const payload = {
+    firstName:   f.firstName.value.trim(),
+    lastName:    f.lastName.value.trim(),
+    email:       f.email.value.trim(),
+    phone:       f.phone.value.trim(),
+    address:     f.address.value.trim(),
+    serviceType: serviceTypeInput.value,
+    ...(isOnline && {
+      poolGallons: document.getElementById('q-gallons').value,
+      photos,
+    }),
+  };
 
   // Send to API
   submitBtn.textContent = 'Sending…';
   submitBtn.disabled = true;
 
   try {
-    const res = await fetch('/api/submit-quote', { method: 'POST', body: payload });
+    const res = await fetch('/api/submit-quote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Server error');
 
